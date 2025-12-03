@@ -2,34 +2,47 @@ import { NextResponse } from 'next/server';
 import { fetchBitableRecords, extractCategories } from '@/lib/feishu';
 import { cache } from '@/lib/cache';
 import { Prompt, PromptsResponse, ErrorResponse } from '@/lib/types';
+import { getPrompts } from '@/lib/sync';
 
-const CACHE_KEY = 'prompts_data';
+const MEMORY_CACHE_KEY = 'prompts_data';
 
 interface CachedData {
   prompts: Prompt[];
   categories: string[];
 }
 
-export async function GET(): Promise<NextResponse<PromptsResponse | ErrorResponse>> {
+/**
+ * 判断是否在生产环境（有 Vercel KV）
+ */
+function hasVercelKV(): boolean {
+  return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+}
+
+export async function GET(): Promise<
+  NextResponse<PromptsResponse | ErrorResponse>
+> {
   try {
-    // Check cache first
-    const cachedData = cache.get<CachedData>(CACHE_KEY);
-    
-    if (cachedData) {
-      return NextResponse.json({
-        success: true,
-        data: cachedData.prompts,
-        total: cachedData.prompts.length,
-        categories: cachedData.categories,
-      });
+    let prompts: Prompt[];
+    let categories: string[];
+
+    if (hasVercelKV()) {
+      // 生产环境：使用 Vercel KV
+      const result = await getPrompts();
+      prompts = result.prompts;
+      categories = result.categories;
+    } else {
+      // 开发环境：使用内存缓存
+      const cachedData = cache.get<CachedData>(MEMORY_CACHE_KEY);
+
+      if (cachedData) {
+        prompts = cachedData.prompts;
+        categories = cachedData.categories;
+      } else {
+        prompts = await fetchBitableRecords();
+        categories = extractCategories(prompts);
+        cache.set<CachedData>(MEMORY_CACHE_KEY, { prompts, categories });
+      }
     }
-
-    // Fetch from Feishu API
-    const prompts = await fetchBitableRecords();
-    const categories = extractCategories(prompts);
-
-    // Cache the result
-    cache.set<CachedData>(CACHE_KEY, { prompts, categories });
 
     return NextResponse.json({
       success: true,
@@ -42,7 +55,7 @@ export async function GET(): Promise<NextResponse<PromptsResponse | ErrorRespons
     console.error('Failed to fetch prompts:', error);
 
     // Try to return cached data if available (even if expired)
-    const cachedData = cache.get<CachedData>(CACHE_KEY);
+    const cachedData = cache.get<CachedData>(MEMORY_CACHE_KEY);
     if (cachedData) {
       console.log('Returning stale cached data due to API error');
       return NextResponse.json({
@@ -54,8 +67,9 @@ export async function GET(): Promise<NextResponse<PromptsResponse | ErrorRespons
     }
 
     // Return error response
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error';
+
     return NextResponse.json(
       {
         success: false,

@@ -92,3 +92,60 @@ export interface CacheItem<T> {
   data: T;
   expireAt: number;
 }
+
+// ========== Webhook 相关类型 ==========
+
+/**
+ * 同步结果
+ */
+export interface SyncResult {
+  success: boolean;
+  promptCount: number;
+  categoryCount: number;
+  syncTime: string;
+  error?: string;
+}
+
+/**
+ * 缓存的 Prompts 数据
+ */
+export interface CachedPromptsData {
+  prompts: Prompt[];
+  categories: string[];
+  lastSync: string;
+  version: number;
+}
+
+/**
+ * 飞书事件订阅 - Header
+ */
+export interface FeishuEventHeader {
+  event_id: string;
+  event_type: string;
+  create_time: string;
+  token: string;
+  app_id: string;
+  tenant_key: string;
+}
+
+/**
+ * 飞书事件订阅 - Bitable 记录变更事件
+ */
+export interface FeishuBitableRecordChangedEvent {
+  action_list: Array<{
+    action: 'record_added' | 'record_edited' | 'record_deleted';
+    record_id: string;
+  }>;
+  file_token: string;
+  file_type: string;
+  operator_id: {
+    open_id: string;
+    union_id: string;
+    user_id: string;
+  };
+  subscriber_id_list: Array<{
+    subscriber_id: string;
+    subscriber_id_type: string;
+  }>;
+  table_id: string;
+}
